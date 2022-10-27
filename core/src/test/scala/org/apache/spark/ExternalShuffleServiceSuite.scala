@@ -201,7 +201,7 @@ class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll wi
           .getOrElse(fail("No host local dir manager"))
 
         val promises = mapOutputs.map { case (bmid, blocks) =>
-          val promise = Promise[Seq[File]]()
+          val promise = Promise[scala.collection.IndexedSeq[File]]()
           dirManager.getHostLocalDirs(bmid.host, bmid.port, Seq(bmid.executorId).toArray) {
             case scala.util.Success(res) => res.foreach { case (eid, dirs) =>
               val files = blocks.flatMap { case (blockId, _, _) =>
