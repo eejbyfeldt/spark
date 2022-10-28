@@ -276,7 +276,7 @@ final class ShuffleBlockFetcherIterator(
           val (size, mapIndex) = infoMap(blockId)
           FetchBlockInfo(BlockId(blockId), size, mapIndex)
         }
-        results.put(DeferFetchRequestResult(FetchRequest(address, blocks)))
+        results.put(DeferFetchRequestResult(FetchRequest(address, blocks.toIndexedSeq)))
         deferredBlocks.clear()
       }
     }
@@ -502,20 +502,20 @@ final class ShuffleBlockFetcherIterator(
         case ShuffleBlockChunkId(_, _, _, _) =>
           if (curRequestSize >= targetRemoteRequestSize ||
             curBlocks.size >= maxBlocksInFlightPerAddress) {
-            curBlocks = createFetchRequests(curBlocks, address, isLast = false,
+            curBlocks = createFetchRequests(curBlocks.toIndexedSeq, address, isLast = false,
               collectedRemoteRequests, enableBatchFetch = false)
             curRequestSize = curBlocks.map(_.size).sum
           }
         case ShuffleMergedBlockId(_, _, _) =>
           if (curBlocks.size >= maxBlocksInFlightPerAddress) {
-            curBlocks = createFetchRequests(curBlocks, address, isLast = false,
+            curBlocks = createFetchRequests(curBlocks.toIndexedSeq, address, isLast = false,
               collectedRemoteRequests, enableBatchFetch = false, forMergedMetas = true)
           }
         case _ =>
           // For batch fetch, the actual block in flight should count for merged block.
           val mayExceedsMaxBlocks = !doBatchFetch && curBlocks.size >= maxBlocksInFlightPerAddress
           if (curRequestSize >= targetRemoteRequestSize || mayExceedsMaxBlocks) {
-            curBlocks = createFetchRequests(curBlocks, address, isLast = false,
+            curBlocks = createFetchRequests(curBlocks.toIndexedSeq, address, isLast = false,
               collectedRemoteRequests, doBatchFetch)
             curRequestSize = curBlocks.map(_.size).sum
           }
@@ -530,7 +530,7 @@ final class ShuffleBlockFetcherIterator(
           case _ => (doBatchFetch, false)
         }
       }
-      createFetchRequests(curBlocks, address, isLast = true, collectedRemoteRequests,
+      createFetchRequests(curBlocks.toIndexedSeq, address, isLast = true, collectedRemoteRequests,
         enableBatchFetch = enableBatchFetch, forMergedMetas = forMergedMetas)
     }
   }
@@ -1438,7 +1438,7 @@ object ShuffleBlockFetcherIterator {
     } else {
       blocks
     }
-    result
+    result.toIndexedSeq
   }
 
   /**
