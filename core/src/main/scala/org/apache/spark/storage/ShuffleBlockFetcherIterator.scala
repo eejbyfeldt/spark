@@ -87,7 +87,7 @@ final class ShuffleBlockFetcherIterator(
     shuffleClient: BlockStoreClient,
     blockManager: BlockManager,
     mapOutputTracker: MapOutputTracker,
-    blocksByAddress: Iterator[(BlockManagerId, Seq[(BlockId, Long, Int)])],
+    blocksByAddress: Iterator[(BlockManagerId, IndexedSeq[(BlockId, Long, Int)])],
     streamWrapper: (BlockId, InputStream) => InputStream,
     maxBytesInFlight: Long,
     maxReqsInFlight: Int,
@@ -276,7 +276,7 @@ final class ShuffleBlockFetcherIterator(
           val (size, mapIndex) = infoMap(blockId)
           FetchBlockInfo(BlockId(blockId), size, mapIndex)
         }
-        results.put(DeferFetchRequestResult(FetchRequest(address, blocks.toSeq)))
+        results.put(DeferFetchRequestResult(FetchRequest(address, blocks)))
         deferredBlocks.clear()
       }
     }
@@ -369,7 +369,7 @@ final class ShuffleBlockFetcherIterator(
    * [[PushBasedFetchHelper]].
    */
   private[this] def partitionBlocksByFetchMode(
-      blocksByAddress: Iterator[(BlockManagerId, Seq[(BlockId, Long, Int)])],
+      blocksByAddress: Iterator[(BlockManagerId, IndexedSeq[(BlockId, Long, Int)])],
       localBlocks: mutable.LinkedHashSet[(BlockId, Int)],
       hostLocalBlocksByExecutor: mutable.LinkedHashMap[BlockManagerId, Seq[(BlockId, Long, Int)]],
       pushMergedLocalBlocks: mutable.LinkedHashSet[BlockId]): ArrayBuffer[FetchRequest] = {
@@ -448,7 +448,7 @@ final class ShuffleBlockFetcherIterator(
   }
 
   private def createFetchRequest(
-      blocks: Seq[FetchBlockInfo],
+      blocks: IndexedSeq[FetchBlockInfo],
       address: BlockManagerId,
       forMergedMetas: Boolean): FetchRequest = {
     logDebug(s"Creating fetch request of ${blocks.map(_.size).sum} at $address "
@@ -457,7 +457,7 @@ final class ShuffleBlockFetcherIterator(
   }
 
   private def createFetchRequests(
-      curBlocks: Seq[FetchBlockInfo],
+      curBlocks: IndexedSeq[FetchBlockInfo],
       address: BlockManagerId,
       isLast: Boolean,
       collectedRemoteRequests: ArrayBuffer[FetchRequest],
@@ -502,20 +502,20 @@ final class ShuffleBlockFetcherIterator(
         case ShuffleBlockChunkId(_, _, _, _) =>
           if (curRequestSize >= targetRemoteRequestSize ||
             curBlocks.size >= maxBlocksInFlightPerAddress) {
-            curBlocks = createFetchRequests(curBlocks.toSeq, address, isLast = false,
+            curBlocks = createFetchRequests(curBlocks, address, isLast = false,
               collectedRemoteRequests, enableBatchFetch = false)
             curRequestSize = curBlocks.map(_.size).sum
           }
         case ShuffleMergedBlockId(_, _, _) =>
           if (curBlocks.size >= maxBlocksInFlightPerAddress) {
-            curBlocks = createFetchRequests(curBlocks.toSeq, address, isLast = false,
+            curBlocks = createFetchRequests(curBlocks, address, isLast = false,
               collectedRemoteRequests, enableBatchFetch = false, forMergedMetas = true)
           }
         case _ =>
           // For batch fetch, the actual block in flight should count for merged block.
           val mayExceedsMaxBlocks = !doBatchFetch && curBlocks.size >= maxBlocksInFlightPerAddress
           if (curRequestSize >= targetRemoteRequestSize || mayExceedsMaxBlocks) {
-            curBlocks = createFetchRequests(curBlocks.toSeq, address, isLast = false,
+            curBlocks = createFetchRequests(curBlocks, address, isLast = false,
               collectedRemoteRequests, doBatchFetch)
             curRequestSize = curBlocks.map(_.size).sum
           }
@@ -530,7 +530,7 @@ final class ShuffleBlockFetcherIterator(
           case _ => (doBatchFetch, false)
         }
       }
-      createFetchRequests(curBlocks.toSeq, address, isLast = true, collectedRemoteRequests,
+      createFetchRequests(curBlocks, address, isLast = true, collectedRemoteRequests,
         enableBatchFetch = enableBatchFetch, forMergedMetas = forMergedMetas)
     }
   }
@@ -1191,7 +1191,7 @@ final class ShuffleBlockFetcherIterator(
    * fallback.
    */
   private[storage] def fallbackFetch(
-      originalBlocksByAddr: Iterator[(BlockManagerId, Seq[(BlockId, Long, Int)])]): Unit = {
+      originalBlocksByAddr: Iterator[(BlockManagerId, IndexedSeq[(BlockId, Long, Int)])]): Unit = {
     val originalLocalBlocks = mutable.LinkedHashSet[(BlockId, Int)]()
     val originalHostLocalBlocksByExecutor =
       mutable.LinkedHashMap[BlockManagerId, Seq[(BlockId, Long, Int)]]()
@@ -1374,8 +1374,8 @@ object ShuffleBlockFetcherIterator {
    * @return the input blocks if doBatchFetch=false, or the merged blocks if doBatchFetch=true.
    */
   def mergeContinuousShuffleBlockIdsIfNeeded(
-      blocks: Seq[FetchBlockInfo],
-      doBatchFetch: Boolean): Seq[FetchBlockInfo] = {
+      blocks: IndexedSeq[FetchBlockInfo],
+      doBatchFetch: Boolean): IndexedSeq[FetchBlockInfo] = {
     val result = if (doBatchFetch) {
       val curBlocks = new ArrayBuffer[FetchBlockInfo]
       val mergedBlockInfo = new ArrayBuffer[FetchBlockInfo]
@@ -1438,7 +1438,7 @@ object ShuffleBlockFetcherIterator {
     } else {
       blocks
     }
-    result.toSeq
+    result
   }
 
   /**
@@ -1462,7 +1462,7 @@ object ShuffleBlockFetcherIterator {
    */
   case class FetchRequest(
       address: BlockManagerId,
-      blocks: Seq[FetchBlockInfo],
+      blocks: IndexedSeq[FetchBlockInfo],
       forMergedMetas: Boolean = false) {
     val size = blocks.map(_.size).sum
   }
