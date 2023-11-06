@@ -141,7 +141,8 @@ abstract class SQLImplicits private[sql] (session: SparkSession) extends LowPrio
       classTag[Seq[E]],
       elementEncoder,
       elementEncoder.nullable,
-      elementEncoder.lenientSerialization)
+      elementEncoder.lenientSerialization,
+      Some(Seq.iterableFactory))
   }
 
   /**

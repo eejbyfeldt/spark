@@ -376,7 +376,7 @@ object ArrowSerializer {
         }
         new ArraySerializer(v, toIterator, elementSerializer)
 
-      case (IterableEncoder(tag, element, _, lenient), v: ListVector) =>
+      case (IterableEncoder(tag, element, _, lenient, _), v: ListVector) =>
         val elementSerializer = serializerFor(element, v.getDataVector)
         val toIterator: Any => Iterator[_] = if (lenient) {
           {

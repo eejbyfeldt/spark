@@ -20,6 +20,7 @@ package org.apache.spark.sql.catalyst
 import javax.lang.model.SourceVersion
 
 import scala.annotation.tailrec
+import scala.collection.{ClassTagIterableFactory, Factory, IterableFactory}
 import scala.reflect.ClassTag
 import scala.reflect.internal.Symbols
 import scala.util.{Failure, Success}
@@ -264,11 +265,26 @@ object ScalaReflection extends ScalaReflection {
         case NoSymbol => fallbackClass
         case _ => mirror.runtimeClass(t.typeSymbol.asClass)
       }
+      val instanceMirror = {
+        val classMirror = mirror.reflectModule(t.dealias.typeSymbol.companion.asModule)
+        mirror.reflect(classMirror.instance)
+      }
+      val factory: Option[Factory[_, Iterable[_]]] = companion match {
+        case i if isSubtype(i, localTypeOf[IterableFactory[Iterable]]) =>
+          val factoryMethod = i.member(TermName("iterableFactory")).asMethod
+          Some(instanceMirror.reflectMethod(factoryMethod)().asInstanceOf[Factory[_, Iterable[_]]])
+        case i if isSubtype(i, localTypeOf[ClassTagIterableFactory[Iterable]]) =>
+          val factoryMethod = i.member(TermName("evidenceIterableFactory")).asMethod
+          val factory = instanceMirror.reflectMethod(factoryMethod)(encoder.clsTag)
+          Some(factory.asInstanceOf[Factory[_, Iterable[_]]])
+        case _ => None
+      }
       IterableEncoder(
         ClassTag(targetClass),
         encoder,
         encoder.nullable,
-        lenientSerialization = false)
+        lenientSerialization = false,
+        factory)
     }
 
     baseType(tpe) match {

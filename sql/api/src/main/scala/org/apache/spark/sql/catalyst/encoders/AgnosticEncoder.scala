@@ -21,6 +21,7 @@ import java.math.{BigDecimal => JBigDecimal, BigInteger => JBigInt}
 import java.time.{Duration, Instant, LocalDate, LocalDateTime, Period}
 import java.util.concurrent.ConcurrentHashMap
 
+import scala.collection.Factory
 import scala.reflect.{classTag, ClassTag}
 
 import org.apache.spark.sql.{Encoder, Row}
@@ -72,7 +73,8 @@ object AgnosticEncoders {
       override val clsTag: ClassTag[C],
       element: AgnosticEncoder[E],
       containsNull: Boolean,
-      override val lenientSerialization: Boolean)
+      override val lenientSerialization: Boolean,
+      val factory: Option[Factory[_, Iterable[_]]] = None)
     extends AgnosticEncoder[C] {
     override def isPrimitive: Boolean = false
     override val dataType: DataType = ArrayType(element.dataType, containsNull)

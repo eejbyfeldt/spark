@@ -19,7 +19,7 @@ package org.apache.spark.sql.catalyst.expressions.objects
 
 import java.lang.reflect.{Method, Modifier}
 
-import scala.collection.mutable
+import scala.collection.Factory
 import scala.collection.mutable.Builder
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
@@ -807,7 +807,8 @@ case class LambdaVariable(
 case class UnresolvedMapObjects(
     @transient function: Expression => Expression,
     child: Expression,
-    customCollectionCls: Option[Class[_]] = None) extends UnaryExpression with Unevaluable {
+    customCollectionCls: Option[Class[_]] = None,
+    factory: Option[Factory[_, _]] = None) extends UnaryExpression with Unevaluable {
   override lazy val resolved = false
 
   override def dataType: DataType = customCollectionCls.map(ObjectType.apply).getOrElse {
@@ -829,13 +830,15 @@ object MapObjects {
    *                        non-null value.
    * @param customCollectionCls Class of the resulting collection (returning ObjectType)
    *                            or None (returning ArrayType)
+   * @param factory A Factory to build and instance of customCollectionCls.
    */
   def apply(
       function: Expression => Expression,
       inputData: Expression,
       elementType: DataType,
       elementNullable: Boolean = true,
-      customCollectionCls: Option[Class[_]] = None): MapObjects = {
+      customCollectionCls: Option[Class[_]] = None,
+      factory: Option[Factory[_, _]] = None): MapObjects = {
     // UnresolvedMapObjects does not serialize its 'function' field.
     // If an array expression or array Encoder is not correctly resolved before
     // serialization, this exception condition may occur.
@@ -844,7 +847,7 @@ object MapObjects {
       "Likely cause is failure to resolve an array expression or encoder. " +
       "(See UnresolvedMapObjects)")
     val loopVar = LambdaVariable("MapObject", elementType, elementNullable)
-    MapObjects(loopVar, function(loopVar), inputData, customCollectionCls)
+    MapObjects(loopVar, function(loopVar), inputData, customCollectionCls, factory)
   }
 }
 
@@ -867,12 +870,14 @@ object MapObjects {
  * @param inputData An expression that when evaluated returns a collection object.
  * @param customCollectionCls Class of the resulting collection (returning ObjectType)
  *                            or None (returning ArrayType)
+ * @param factory A Factory to build and instance of customCollectionCls.
  */
 case class MapObjects private(
     loopVar: LambdaVariable,
     lambdaFunction: Expression,
     inputData: Expression,
-    customCollectionCls: Option[Class[_]]) extends Expression with NonSQLExpression
+    customCollectionCls: Option[Class[_]],
+    factory: Option[Factory[_, _]]) extends Expression with NonSQLExpression
   with TernaryLike[Expression] {
 
   override def nullable: Boolean = inputData.nullable
@@ -926,24 +931,11 @@ case class MapObjects private(
     ClassTag(clazz).asInstanceOf[ClassTag[Any]]
   }
 
-  private lazy val mapElements: scala.collection.Seq[_] => Any = customCollectionCls match {
-    case Some(cls) if classOf[mutable.ArraySeq[_]].isAssignableFrom(cls) =>
-      // The implicit tag is a workaround to deal with a small change in the
-      // (scala) signature of ArrayBuilder.make between Scala 2.12 and 2.13.
-      implicit val tag: ClassTag[Any] = elementClassTag()
-      input => {
-        val builder = mutable.ArrayBuilder.make[Any]
-        builder.sizeHint(input.size)
-        executeFuncOnCollection(input).foreach(builder += _)
-        mutable.ArraySeq.make(builder.result())
-      }
-    case Some(cls) if classOf[scala.collection.Seq[_]].isAssignableFrom(cls) =>
-      // Scala sequence
-      executeFuncOnCollection(_).toSeq
-    case Some(cls) if classOf[scala.collection.Set[_]].isAssignableFrom(cls) =>
-      // Scala set
-      executeFuncOnCollection(_).toSet
-    case Some(cls) if classOf[java.util.List[_]].isAssignableFrom(cls) =>
+  private lazy val mapElements:
+      scala.collection.Seq[_] => Any = (customCollectionCls, factory) match {
+    case (_, Some(factory: Factory[Any, _])) =>
+      col => factory.fromSpecific(executeFuncOnCollection(col))
+    case (Some(cls), _) if classOf[java.util.List[_]].isAssignableFrom(cls) =>
       // Java list
       if (cls == classOf[java.util.List[_]] || cls == classOf[java.util.AbstractList[_]] ||
           cls == classOf[java.util.AbstractSequentialList[_]]) {
@@ -972,10 +964,10 @@ case class MapObjects private(
           builder
         }
       }
-    case None =>
+    case (None, _) =>
       // array
       x => new GenericArrayData(executeFuncOnCollection(x).toArray)
-    case Some(cls) =>
+    case (Some(cls), _) =>
       throw QueryExecutionErrors.classUnsupportedByMapObjectsError(cls)
   }
 
@@ -1092,26 +1084,10 @@ case class MapObjects private(
     }
 
     val (initCollection, addElement, getResult): (String, String => String, String) =
-      customCollectionCls match {
-        case Some(cls) if classOf[mutable.ArraySeq[_]].isAssignableFrom(cls) =>
-          val tag = ctx.addReferenceObj("tag", elementClassTag())
-          val builderClassName = classOf[mutable.ArrayBuilder[_]].getName
-          val getBuilder = s"$builderClassName$$.MODULE$$.make($tag)"
-          val builder = ctx.freshName("collectionBuilder")
-          (
-            s"""
-                 ${classOf[Builder[_, _]].getName} $builder = $getBuilder;
-                 $builder.sizeHint($dataLength);
-               """,
-            (genValue: String) => s"$builder.$$plus$$eq($genValue);",
-            s"(${cls.getName}) ${classOf[mutable.ArraySeq[_]].getName}$$." +
-              s"MODULE$$.make($builder.result());"
-          )
-
-        case Some(cls) if classOf[scala.collection.Seq[_]].isAssignableFrom(cls) ||
-          classOf[scala.collection.Set[_]].isAssignableFrom(cls) =>
-          // Scala sequence or set
-          val getBuilder = s"${cls.getName}$$.MODULE$$.newBuilder()"
+      (customCollectionCls, factory) match {
+        case (Some(cls), Some(factoryInstance)) =>
+          val factory = ctx.addReferenceObj("factory", factoryInstance)
+          val getBuilder = s"$factory.newBuilder()"
           val builder = ctx.freshName("collectionBuilder")
           (
             s"""
@@ -1121,7 +1097,7 @@ case class MapObjects private(
             (genValue: String) => s"$builder.$$plus$$eq($genValue);",
             s"(${cls.getName}) $builder.result();"
           )
-        case Some(cls) if classOf[java.util.List[_]].isAssignableFrom(cls) =>
+        case (Some(cls), _) if classOf[java.util.List[_]].isAssignableFrom(cls) =>
           // Java list
           val builder = ctx.freshName("collectionBuilder")
           (

@@ -647,7 +647,8 @@ class ArrowEncoderSuite extends ConnectFunSuite with BeforeAndAfterAll {
       classTag[Seq[Int]],
       BoxedIntEncoder,
       containsNull = true,
-      lenientSerialization = true)
+      lenientSerialization = true,
+      Some(Seq.iterableFactory))
     val elements = Seq(Array(1, 7, 8), Array.emptyIntArray, Array(88))
     val primitiveArrays = () => elements.iterator
     val genericArrays = () => elements.iterator.map(v => v.map(Int.box))

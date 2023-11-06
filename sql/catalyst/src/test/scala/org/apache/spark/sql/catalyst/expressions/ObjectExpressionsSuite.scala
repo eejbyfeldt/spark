@@ -350,9 +350,20 @@ class ObjectExpressionsSuite extends SparkFunSuite with ExpressionEvalHelper {
       val elementType = IntegerType
       val expected = Seq(2, 3, 4)
 
+      val factory = collectionCls match {
+        case null => None
+        case a if classOf[mutable.ArraySeq[Int]].isAssignableFrom(a) =>
+          Some(mutable.ArraySeq.evidenceIterableFactory[Int])
+        case s if classOf[Seq[_]].isAssignableFrom(s) =>
+          Some(Seq.iterableFactory[Int])
+        case s if classOf[scala.collection.Set[_]].isAssignableFrom(s) =>
+          Some(Set.iterableFactory[Int])
+        case _ => None
+      }
+
       val inputObject = BoundReference(0, inputType, nullable = true)
       val optClass = Option(collectionCls)
-      val mapObj = MapObjects(function, inputObject, elementType, true, optClass)
+      val mapObj = MapObjects(function, inputObject, elementType, true, optClass, factory)
       val row = InternalRow.fromSeq(Seq(collection))
       val result = mapObj.eval(row)
 

@@ -211,23 +211,17 @@ object ArrowDeserializers {
           def value(i: Int): AnyRef = getArray(vector, i, deserializer)(element.clsTag)
         }
 
-      case (IterableEncoder(tag, element, _, _), v: ListVector) =>
+      case (IterableEncoder(tag, element, _, _, factory), v: ListVector) =>
         val deserializer = deserializerFor(element, v.getDataVector, timeZoneId)
-        if (isSubClass(Classes.MUTABLE_ARRAY_SEQ, tag)) {
-          // mutable ArraySeq is a bit special because we need to use an array of the element type.
-          // Some parts of our codebase (unfortunately) rely on this for type inference on results.
-          new VectorFieldDeserializer[mutable.ArraySeq[Any], ListVector](v) {
-            def value(i: Int): mutable.ArraySeq[Any] = {
-              val array = getArray(vector, i, deserializer)(element.clsTag)
-              ScalaCollectionUtils.wrap(array)
-            }
-          }
-        } else if (isSubClass(Classes.ITERABLE, tag)) {
-          val companion = ScalaCollectionUtils.getIterableCompanion(tag)
+        if (isSubClass(Classes.ITERABLE, tag)) {
           new VectorFieldDeserializer[Iterable[Any], ListVector](v) {
             def value(i: Int): Iterable[Any] = {
-              val builder = companion.newBuilder[Any]
-              loadListIntoBuilder(vector, i, deserializer, builder)
+              val builder = factory.get.newBuilder
+              loadListIntoBuilder(
+                vector,
+                i,
+                deserializer,
+                builder.asInstanceOf[mutable.Builder[Any, _]])
               builder.result()
             }
           }

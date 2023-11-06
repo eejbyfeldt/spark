@@ -103,11 +103,13 @@ object RowEncoder {
       }
       UDTEncoder(udt, udtClass.asInstanceOf[Class[_ <: UserDefinedType[_]]])
     case ArrayType(elementType, containsNull) =>
+      val elementEncoder = encoderForDataType(elementType, lenient)
       IterableEncoder(
         classTag[mutable.ArraySeq[_]],
-        encoderForDataType(elementType, lenient),
+        elementEncoder,
         containsNull,
-        lenientSerialization = true)
+        lenientSerialization = true,
+        Some(mutable.ArraySeq.evidenceIterableFactory(elementEncoder.clsTag)))
     case MapType(keyType, valueType, valueContainsNull) =>
       MapEncoder(
         classTag[scala.collection.Map[_, _]],

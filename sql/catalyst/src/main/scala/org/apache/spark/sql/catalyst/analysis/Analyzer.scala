@@ -3553,10 +3553,10 @@ class Analyzer(override val catalogManager: CatalogManager) extends RuleExecutor
           val resolved = resolveExpressionByPlanOutput(
             deserializer, LocalRelation(inputs), throws = true)
           val result = resolved transformDown {
-            case UnresolvedMapObjects(func, inputData, cls) if inputData.resolved =>
+            case UnresolvedMapObjects(func, inputData, cls, factory) if inputData.resolved =>
               inputData.dataType match {
                 case ArrayType(et, cn) =>
-                  MapObjects(func, inputData, et, cn, cls) transformUp {
+                  MapObjects(func, inputData, et, cn, cls, factory) transformUp {
                     case UnresolvedExtractValue(child, fieldName) if child.resolved =>
                       ExtractValue(child, fieldName, resolver)
                   }

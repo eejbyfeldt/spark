@@ -21,6 +21,7 @@ import java.math.BigInteger
 import java.sql.{Date, Timestamp}
 import java.util.Arrays
 
+import scala.collection.immutable.ArraySeq
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.runtime.universe.TypeTag
 
@@ -209,6 +210,10 @@ class ExpressionEncoderSuite extends CodegenInterpretedPlanTest with AnalysisTes
 
   encodeDecodeTest(List(1, 2), "list of int")
   encodeDecodeTest(List("a", null), "list with String and null")
+
+  encodeDecodeTest(ArraySeq(1, 2), "ArraySeq integer")
+  encodeDecodeTest(ArraySeq("a", "b", null), "ArraySeq String")
+  encodeDecodeTest(Tuple1(ArraySeq(1, 2)), "ArraySeq in product")
 
   encodeDecodeTest(
     UDTCaseClass(new java.net.URI("http://spark.apache.org/")), "udt with case class")

@@ -324,7 +324,7 @@ object SerializerBuildHelper {
         serializerForArray(elementEncoder, containsNull, input, lenientSerialization = false)
       }
 
-    case IterableEncoder(ctag, elementEncoder, containsNull, lenientSerialization) =>
+    case IterableEncoder(ctag, elementEncoder, containsNull, lenientSerialization, _) =>
       val getter = if (classOf[scala.collection.Set[_]].isAssignableFrom(ctag.runtimeClass)) {
         // There's no corresponding Catalyst type for `Set`, we serialize a `Set` to Catalyst array.
         // Note that the property of `Set` is only kept when manipulating the data as domain object.

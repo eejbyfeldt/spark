@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.catalyst
 
+import scala.collection.Factory
+
 import org.apache.spark.sql.catalyst.{expressions => exprs}
 import org.apache.spark.sql.catalyst.analysis.{GetColumnByOrdinal, UnresolvedExtractValue}
 import org.apache.spark.sql.catalyst.encoders.{AgnosticEncoder, AgnosticEncoders}
@@ -297,17 +299,19 @@ object DeserializerBuildHelper {
           elementEnc,
           containsNull,
           None,
+          None,
           walkedTypePath),
         toArrayMethodName(elementEnc),
         ObjectType(enc.clsTag.runtimeClass),
         returnNullable = false)
 
-    case IterableEncoder(clsTag, elementEnc, containsNull, _) =>
+    case IterableEncoder(clsTag, elementEnc, containsNull, _, factory) =>
       deserializeArray(
         path,
         elementEnc,
         containsNull,
         Option(clsTag.runtimeClass),
+        factory,
         walkedTypePath)
 
     case MapEncoder(tag, keyEncoder, valueEncoder, _)
@@ -417,6 +421,7 @@ object DeserializerBuildHelper {
       elementEnc: AgnosticEncoder[_],
       containsNull: Boolean,
       cls: Option[Class[_]],
+      factory: Option[Factory[_, _]],
       walkedTypePath: WalkedTypePath): Expression = {
     val newTypePath = walkedTypePath.recordArray(elementEnc.clsTag.runtimeClass.getName)
     val mapFunction: Expression => Expression = element => {
@@ -428,7 +433,7 @@ object DeserializerBuildHelper {
         newTypePath,
         createDeserializer(elementEnc, _, newTypePath))
     }
-    UnresolvedMapObjects(mapFunction, path, cls)
+    UnresolvedMapObjects(mapFunction, path, cls, factory)
   }
 
   private def toArrayMethodName(enc: AgnosticEncoder[_]): String = enc match {
