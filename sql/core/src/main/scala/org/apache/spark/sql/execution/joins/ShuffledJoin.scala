@@ -17,9 +17,9 @@
 
 package org.apache.spark.sql.execution.joins
 
-import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
+import org.apache.spark.sql.catalyst.expressions.{Attribute, Coalesce, Expression}
 import org.apache.spark.sql.catalyst.plans.{ExistenceJoin, FullOuter, InnerLike, LeftExistence, LeftOuter, RightOuter}
-import org.apache.spark.sql.catalyst.plans.physical.{ClusteredDistribution, Distribution, HashPartitioning, Partitioning, PartitioningCollection, UnknownPartitioning, UnspecifiedDistribution}
+import org.apache.spark.sql.catalyst.plans.physical.{ClusteredDistribution, Distribution, HashPartitioning, HashPartitioningLike, Partitioning, PartitioningCollection, UnknownPartitioning, UnspecifiedDistribution}
 
 /**
  * Holds common logic for join operators by shuffling two child relations
@@ -49,7 +49,17 @@ trait ShuffledJoin extends JoinCodegenSupport {
       PartitioningCollection(Seq(left.outputPartitioning, right.outputPartitioning))
     case LeftOuter => left.outputPartitioning
     case RightOuter => right.outputPartitioning
-    case FullOuter => UnknownPartitioning(left.outputPartitioning.numPartitions)
+    case FullOuter =>
+      (left.outputPartitioning, right.outputPartitioning) match {
+        case (leftHash: HashPartitioningLike, rightHash: HashPartitioningLike) =>
+          assert(leftHash.children.size == rightHash.children.size)
+          assert(leftHash.numPartitions == rightHash.numPartitions)
+          val outputExpers = leftHash.children.zip(rightHash.children).map {
+            case (l, r) => Coalesce(Seq(l, r)) }
+          leftHash.withNewChildren(outputExpers).asInstanceOf[Partitioning]
+        case _ => UnknownPartitioning(left.outputPartitioning.numPartitions)
+      }
+
     case LeftExistence(_) => left.outputPartitioning
     case x =>
       throw new IllegalArgumentException(
