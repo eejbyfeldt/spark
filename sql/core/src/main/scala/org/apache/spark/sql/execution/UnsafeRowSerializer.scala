@@ -24,6 +24,7 @@ import scala.reflect.ClassTag
 
 import com.google.common.io.ByteStreams
 
+import org.apache.spark.SparkException
 import org.apache.spark.SparkUnsupportedOperationException
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, Serializer, SerializerInstance}
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
@@ -103,6 +104,7 @@ private class UnsafeRowSerializerInstance(
       private[this] val dIn: DataInputStream = new DataInputStream(new BufferedInputStream(in))
       // 1024 is a default buffer size; this buffer will grow to accommodate larger rows
       private[this] var rowBuffer: Array[Byte] = new Array[Byte](1024)
+      private[this] val sizeBuffer: Array[Byte] = new Array[Byte](4)
       private[this] var row: UnsafeRow = new UnsafeRow(numFields)
       private[this] var rowTuple: (Int, UnsafeRow) = (0, row)
       private[this] val EOF: Int = -1
@@ -110,12 +112,15 @@ private class UnsafeRowSerializerInstance(
       override def asKeyValueIterator: Iterator[(Int, UnsafeRow)] = {
         new Iterator[(Int, UnsafeRow)] {
 
-          private[this] def readSize(): Int = try {
-            dIn.readInt()
-          } catch {
-            case e: EOFException =>
-              dIn.close()
+          private[this] def readSize(): Int = {
+            val read = dIn.read(sizeBuffer)
+            if (read == -1) {
               EOF
+            } else if (read < 4) {
+              throw new SparkException(s"Read unexpected number of bytes. Read $read expected 4")
+            } else {
+              ByteBuffer.wrap(sizeBuffer).getInt()
+            }
           }
 
           private[this] var rowSize: Int = readSize()
